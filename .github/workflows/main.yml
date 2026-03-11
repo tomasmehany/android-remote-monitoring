@@ -89,6 +89,16 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleDebug
 
+      - name: Inspect Build Output
+        run: |
+          echo "=== List of all files in the workspace after build ==="
+          find . -type f -name "*.apk" -o -name "*.txt" -o -name "*.log" | sort
+          echo "=== End of file list ==="
+          echo ""
+          echo "=== Current directory structure ==="
+          ls -laR app/build/
+          echo "=== End of directory structure ==="
+
       - name: Find APK location
         run: |
           echo "Searching for all APK files..."
