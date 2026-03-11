@@ -19,11 +19,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Setup Java 17
+      - name: Setup Java 11 (مش 17)
         uses: actions/setup-java@v3
         with:
           distribution: 'temurin'
-          java-version: '17'
+          java-version: '11'
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
@@ -97,31 +97,25 @@ jobs:
           </adaptive-icon>
           EOF
 
-      - name: Build APK with aapt and dx
+      - name: Build APK with Java 11 and d8
         run: |
-          # إنشاء مجلدات للـ build
-          mkdir -p build/apk
-          mkdir -p build/compiled
-          
-          # 🔥 الخطوة 1: تجميع الموارد باستخدام aapt
-          $ANDROID_SDK_ROOT/build-tools/30.0.3/aapt package -f -m \
-            -J build/compiled \
-            -M app/src/main/AndroidManifest.xml \
-            -S app/src/main/res \
-            -I $ANDROID_SDK_ROOT/platforms/android-30/android.jar
-          
-          # 🔥 الخطوة 2: تجميع ملفات جافا مع android.jar
+          # 🔥 إستخدام Java 11
           mkdir -p build/classes
-          javac -cp $ANDROID_SDK_ROOT/platforms/android-30/android.jar \
+          mkdir -p build/apk
+          
+          # تجميع ملفات جافا
+          javac -source 1.8 -target 1.8 \
+            -cp $ANDROID_SDK_ROOT/platforms/android-30/android.jar \
             -d build/classes \
             app/src/main/java/com/example/app/*.java
           
-          # 🔥 الخطوة 3: تحويل classes إلى dex
-          $ANDROID_SDK_ROOT/build-tools/30.0.3/dx --dex \
-            --output=build/classes.dex \
-            build/classes
+          # تحويل classes إلى dex بإستخدام d8
+          $ANDROID_SDK_ROOT/build-tools/30.0.3/d8 \
+            --lib $ANDROID_SDK_ROOT/platforms/android-30/android.jar \
+            --output build/ \
+            build/classes/com/example/app/*.class
           
-          # 🔥 الخطوة 4: تجميع الموارد الثنائية
+          # تجميع الموارد
           $ANDROID_SDK_ROOT/build-tools/30.0.3/aapt package -f \
             -M app/src/main/AndroidManifest.xml \
             -S app/src/main/res \
@@ -129,11 +123,9 @@ jobs:
             -F build/apk/app-unaligned.apk \
             build/classes.dex
           
-          # 🔥 الخطوة 5: توقيع الـ APK (توقيع بسيط للاختبار)
+          # نسخ الملف النهائي
           cd build/apk
           mv app-unaligned.apk app.apk
-          
-          # نسخ الملف النهائي
           cp app.apk ../../app-debug.apk
 
       - name: Upload APK
