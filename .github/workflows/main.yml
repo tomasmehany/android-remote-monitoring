@@ -87,7 +87,7 @@ jobs:
           }
           EOF
           
-          # build.gradle
+          # build.gradle للتطبيق
           cat > app/build.gradle << 'EOF'
           apply plugin: 'com.android.application'
           android {
@@ -100,20 +100,48 @@ jobs:
           }
           EOF
           
+          # settings.gradle
           echo "include ':app'" > settings.gradle
           
+          # build.gradle الرئيسي
           cat > build.gradle << 'EOF'
           buildscript {
-              repositories { google() }
-              dependencies { classpath 'com.android.tools.build:gradle:7.2.2' }
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+              dependencies {
+                  classpath 'com.android.tools.build:gradle:7.2.2'
+              }
           }
           EOF
 
+      - name: Setup Gradle
+        run: |
+          # إنشاء مجلد Gradle wrapper
+          mkdir -p gradle/wrapper
+          
+          # إنشاء ملف gradle-wrapper.properties
+          cat > gradle/wrapper/gradle-wrapper.properties << 'EOF'
+          distributionBase=GRADLE_USER_HOME
+          distributionPath=wrapper/dists
+          distributionUrl=https\://services.gradle.org/distributions/gradle-7.5-bin.zip
+          zipStoreBase=GRADLE_USER_HOME
+          zipStorePath=wrapper/dists
+          EOF
+          
+          # تحميل gradle wrapper
+          wget https://raw.githubusercontent.com/gradle/gradle/master/gradlew
+          wget https://raw.githubusercontent.com/gradle/gradle/master/gradlew.bat
+          
+          # جعل gradlew قابل للتنفيذ
+          chmod +x gradlew
+          
+          # عرض الملفات للتأكد
+          ls -la
+
       - name: Build APK
         run: |
-          mkdir -p gradle/wrapper
-          echo "distributionUrl=https\\://services.gradle.org/distributions/gradle-7.5-bin.zip" > gradle/wrapper/gradle-wrapper.properties
-          chmod +x gradlew
           ./gradlew assembleDebug
 
       - name: Upload APK
