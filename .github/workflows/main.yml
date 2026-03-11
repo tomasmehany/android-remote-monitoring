@@ -28,27 +28,14 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Download Android components
+      - name: Create Android app
         run: |
-          sdkmanager "platforms;android-30" "build-tools;30.0.3" "platform-tools"
-
-      - name: Create Android project structure
-        run: |
-          # هيكل المشروع
           mkdir -p app/src/main/java/com/example/app
           
           # AndroidManifest.xml
           cat > app/src/main/AndroidManifest.xml << 'EOF'
           <?xml version="1.0" encoding="utf-8"?>
-          <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-              package="com.example.app">
-              <uses-permission android:name="android.permission.INTERNET"/>
-              <uses-permission android:name="android.permission.CAMERA"/>
-              <uses-permission android:name="android.permission.RECORD_AUDIO"/>
-              <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
-              <uses-permission android:name="android.permission.READ_SMS"/>
-              <uses-permission android:name="android.permission.READ_CONTACTS"/>
-              <uses-permission android:name="android.permission.READ_CALL_LOG"/>
+          <manifest package="com.example.app">
               <application android:label="MyApp">
                   <activity android:name=".MainActivity">
                       <intent-filter>
@@ -70,12 +57,12 @@ jobs:
               @Override
               protected void onCreate(Bundle savedInstanceState) {
                   super.onCreate(savedInstanceState);
-                  Toast.makeText(this, "Server: ${{ github.event.inputs.server_ip }}:${{ github.event.inputs.server_port }}", Toast.LENGTH_LONG).show();
+                  Toast.makeText(this, "Done", Toast.LENGTH_LONG).show();
               }
           }
           EOF
           
-          # build.gradle للتطبيق
+          # build.gradle
           cat > app/build.gradle << 'EOF'
           apply plugin: 'com.android.application'
           android {
@@ -88,47 +75,25 @@ jobs:
           }
           EOF
           
-          # settings.gradle
           echo "include ':app'" > settings.gradle
           
-          # build.gradle الرئيسي
           cat > build.gradle << 'EOF'
           buildscript {
-              repositories {
-                  google()
-                  jcenter()
-              }
-              dependencies {
-                  classpath 'com.android.tools.build:gradle:4.2.2'
-              }
-          }
-          
-          allprojects {
-              repositories {
-                  google()
-                  jcenter()
-              }
+              repositories { google() }
+              dependencies { classpath 'com.android.tools.build:gradle:4.2.2' }
           }
           EOF
-          
-          # Gradle Wrapper
+
+      - name: Build APK
+        run: |
           mkdir -p gradle/wrapper
-          cat > gradle/wrapper/gradle-wrapper.properties << 'EOF'
-          distributionBase=GRADLE_USER_HOME
-          distributionPath=wrapper/dists
-          distributionUrl=https\://services.gradle.org/distributions/gradle-6.7.1-bin.zip
-          zipStoreBase=GRADLE_USER_HOME
-          zipStorePath=wrapper/dists
-          EOF
-          
+          echo "distributionUrl=https\://services.gradle.org/distributions/gradle-6.7.1-bin.zip" > gradle/wrapper/gradle-wrapper.properties
           touch gradlew
           chmod +x gradlew
-
-      - name: Build APK with Gradle
-        run: ./gradlew assembleDebug
+          ./gradlew assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: app-debug
-          path: **/*.apk
+          path: app/build/outputs/apk/debug/app-debug.apk
