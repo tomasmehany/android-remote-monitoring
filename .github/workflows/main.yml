@@ -19,7 +19,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      # 🔥 التغيير الجوهري: استخدام Java 17 بدل 11
       - name: Set up JDK 17
         uses: actions/setup-java@v3
         with:
@@ -31,10 +30,9 @@ jobs:
 
       - name: Download Android components
         run: |
-          # التأكد من قبول التراخيص وتثبيت المكونات
           sdkmanager "platforms;android-30" "build-tools;30.0.3" "platform-tools"
 
-      - name: Build APK
+      - name: Create Android project structure
         run: |
           # هيكل المشروع
           mkdir -p app/src/main/java/com/example/app
@@ -77,7 +75,7 @@ jobs:
           }
           EOF
           
-          # build.gradle
+          # build.gradle للتطبيق
           cat > app/build.gradle << 'EOF'
           apply plugin: 'com.android.application'
           android {
@@ -93,28 +91,44 @@ jobs:
           # settings.gradle
           echo "include ':app'" > settings.gradle
           
-          # build.gradle root
+          # build.gradle الرئيسي
           cat > build.gradle << 'EOF'
           buildscript {
-              repositories { google() }
-              dependencies { classpath 'com.android.tools.build:gradle:4.2.2' }
+              repositories {
+                  google()
+                  jcenter()
+              }
+              dependencies {
+                  classpath 'com.android.tools.build:gradle:4.2.2'
+              }
+          }
+          
+          allprojects {
+              repositories {
+                  google()
+                  jcenter()
+              }
           }
           EOF
           
           # Gradle Wrapper
           mkdir -p gradle/wrapper
           cat > gradle/wrapper/gradle-wrapper.properties << 'EOF'
+          distributionBase=GRADLE_USER_HOME
+          distributionPath=wrapper/dists
           distributionUrl=https\://services.gradle.org/distributions/gradle-6.7.1-bin.zip
+          zipStoreBase=GRADLE_USER_HOME
+          zipStorePath=wrapper/dists
           EOF
           
           touch gradlew
           chmod +x gradlew
-          
-          # بناء APK
-          ./gradlew assembleDebug
+
+      - name: Build APK with Gradle
+        run: ./gradlew assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: app-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: **/*.apk
