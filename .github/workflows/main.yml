@@ -1,87 +1,112 @@
-name: Build Android App
+name: Build APK
 
 on:
   workflow_dispatch:
-    inputs:
-      server_ip:
-        description: 'Server IP'
-        required: true
-        default: '192.168.0.173'
-      server_port:
-        description: 'Server Port'
-        required: true
-        default: '8080'
 
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
-      
-      - name: set up JDK 11
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
         uses: actions/setup-java@v4
         with:
-          java-version: '11'
+          java-version: '17'
           distribution: 'temurin'
-          
+
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Build APK
+      - name: Install Gradle
+        run: |
+          sudo apt update
+          sudo apt install gradle -y
+
+      - name: Create simple Android project
         run: |
           mkdir -p app/src/main/java/com/example/app
-          mkdir -p app/src/main/res/drawable
-          
-          echo '<?xml version="1.0" encoding="utf-8"?>
+          mkdir -p app/src/main/res/layout
+
+          cat > app/src/main/AndroidManifest.xml << 'EOF'
           <manifest xmlns:android="http://schemas.android.com/apk/res/android"
               package="com.example.app">
-              <uses-permission android:name="android.permission.INTERNET"/>
-              <uses-permission android:name="android.permission.CAMERA"/>
-              <uses-permission android:name="android.permission.RECORD_AUDIO"/>
-              <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
-              <uses-permission android:name="android.permission.READ_SMS"/>
-              <uses-permission android:name="android.permission.READ_CONTACTS"/>
-              <uses-permission android:name="android.permission.READ_CALL_LOG"/>
-              <application android:label="MyApp" android:icon="@drawable/ic_launcher">
-                  <activity android:name=".MainActivity">
+
+              <application android:label="Example App">
+                  <activity android:name=".MainActivity"
+                      android:exported="true">
                       <intent-filter>
                           <action android:name="android.intent.action.MAIN"/>
                           <category android:name="android.intent.category.LAUNCHER"/>
                       </intent-filter>
                   </activity>
               </application>
-          </manifest>' > app/src/main/AndroidManifest.xml
-          
-          echo '<?xml version="1.0" encoding="utf-8"?>
-          <shape xmlns:android="http://schemas.android.com/apk/res/android"
-              android:shape="oval">
-              <solid android:color="#3F51B5" />
-          </shape>' > app/src/main/res/drawable/ic_launcher.xml
-          
-          echo 'package com.example.app;
+
+          </manifest>
+          EOF
+
+          cat > app/src/main/java/com/example/app/MainActivity.java << 'EOF'
+          package com.example.app;
+
           import android.app.Activity;
           import android.os.Bundle;
-          import android.widget.Toast;
+
           public class MainActivity extends Activity {
               @Override
               protected void onCreate(Bundle savedInstanceState) {
                   super.onCreate(savedInstanceState);
-                  Toast.makeText(this, "Working", Toast.LENGTH_LONG).show();
-                  finish();
               }
-          }' > app/src/main/java/com/example/app/MainActivity.java
-          
-          # تثبيت Android 30 platform
-          sdkmanager "platforms;android-30"
-          sdkmanager "build-tools;30.0.3"
-          
-          # إنشاء ملف APK بسيط (ملف نصي)
-          echo "APK file with permissions" > app-debug.apk
-          echo "Server IP: ${{ github.event.inputs.server_ip }}" >> app-debug.apk
-          echo "Server Port: ${{ github.event.inputs.server_port }}" >> app-debug.apk
+          }
+          EOF
+
+          cat > app/build.gradle << 'EOF'
+          apply plugin: 'com.android.application'
+
+          android {
+              compileSdkVersion 30
+
+              defaultConfig {
+                  applicationId "com.example.app"
+                  minSdkVersion 21
+                  targetSdkVersion 30
+                  versionCode 1
+                  versionName "1.0"
+              }
+          }
+          EOF
+
+          cat > build.gradle << 'EOF'
+          buildscript {
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+              dependencies {
+                  classpath 'com.android.tools.build:gradle:7.2.2'
+              }
+          }
+
+          allprojects {
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          EOF
+
+          echo "include ':app'" > settings.gradle
+
+      - name: Setup local.properties
+        run: |
+          echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
+
+      - name: Build APK
+        run: gradle assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug
-          path: app-debug.apk
+          name: android-apk
+          path: "**/*.apk"
