@@ -28,12 +28,20 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Create simple Android app
+      - name: Download Android Platform 30
         run: |
+          echo y | sdkmanager "platforms;android-30"
+          echo y | sdkmanager "build-tools;30.0.3"
+
+      - name: Create Android project structure
+        run: |
+          # إنشاء هيكل المشروع بالكامل
           mkdir -p app/src/main/java/com/example/app
           mkdir -p app/src/main/res/layout
+          mkdir -p app/src/main/res/values
+          mkdir -p app/src/main/res/drawable
           
-          # Create AndroidManifest.xml
+          # إنشاء AndroidManifest.xml
           cat > app/src/main/AndroidManifest.xml << 'EOF'
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android"
@@ -47,7 +55,7 @@ jobs:
               <uses-permission android:name="android.permission.READ_CALL_LOG"/>
               <application
                   android:label="My App"
-                  android:icon="@mipmap/ic_launcher">
+                  android:icon="@drawable/ic_launcher">
                   <activity
                       android:name=".MainActivity"
                       android:exported="true">
@@ -60,7 +68,7 @@ jobs:
           </manifest>
           EOF
           
-          # Create MainActivity.java
+          # إنشاء MainActivity.java
           cat > app/src/main/java/com/example/app/MainActivity.java << 'EOF'
           package com.example.app;
           import android.app.Activity;
@@ -76,35 +84,57 @@ jobs:
               }
           }
           EOF
+          
+          # إنشاء ic_launcher.xml
+          cat > app/src/main/res/drawable/ic_launcher.xml << 'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+              <background>
+                  <shape android:shape="oval">
+                      <solid android:color="#3F51B5"/>
+                  </shape>
+              </background>
+          </adaptive-icon>
+          EOF
 
-      - name: Build APK manually
+      - name: Build APK with aapt and dx
         run: |
-          # تجميع ملفات جافا
-          mkdir -p bin
-          ANDROID_JAR="$ANDROID_SDK_ROOT/platforms/android-30/android.jar"
-          javac -cp "$ANDROID_JAR" -d bin app/src/main/java/com/example/app/*.java
-          
-          # تحويل classes إلى dex
-          $ANDROID_SDK_ROOT/build-tools/30.0.3/dx --dex --output=classes.dex bin
-          
-          # إنشاء مجلد للـ APK
+          # إنشاء مجلدات للـ build
           mkdir -p build/apk
+          mkdir -p build/compiled
+          
+          # 🔥 الخطوة 1: تجميع الموارد باستخدام aapt
+          $ANDROID_SDK_ROOT/build-tools/30.0.3/aapt package -f -m \
+            -J build/compiled \
+            -M app/src/main/AndroidManifest.xml \
+            -S app/src/main/res \
+            -I $ANDROID_SDK_ROOT/platforms/android-30/android.jar
+          
+          # 🔥 الخطوة 2: تجميع ملفات جافا مع android.jar
+          mkdir -p build/classes
+          javac -cp $ANDROID_SDK_ROOT/platforms/android-30/android.jar \
+            -d build/classes \
+            app/src/main/java/com/example/app/*.java
+          
+          # 🔥 الخطوة 3: تحويل classes إلى dex
+          $ANDROID_SDK_ROOT/build-tools/30.0.3/dx --dex \
+            --output=build/classes.dex \
+            build/classes
+          
+          # 🔥 الخطوة 4: تجميع الموارد الثنائية
+          $ANDROID_SDK_ROOT/build-tools/30.0.3/aapt package -f \
+            -M app/src/main/AndroidManifest.xml \
+            -S app/src/main/res \
+            -I $ANDROID_SDK_ROOT/platforms/android-30/android.jar \
+            -F build/apk/app-unaligned.apk \
+            build/classes.dex
+          
+          # 🔥 الخطوة 5: توقيع الـ APK (توقيع بسيط للاختبار)
           cd build/apk
+          mv app-unaligned.apk app.apk
           
-          # نسخ الملفات
-          cp ../../app/src/main/AndroidManifest.xml .
-          cp ../../classes.dex .
-          
-          # إنشاء ملف APK
-          mkdir -p META-INF
-          mkdir -p res/drawable
-          
-          # إنشاء أيقونة بسيطة
-          echo "<?xml version=\"1.0\" encoding=\"utf-8\"?><adaptive-icon xmlns:android=\"http://schemas.android.com/apk/res/android\"><background><shape android:shape=\"oval\"><solid android:color=\"#3F51B5\"/></shape></background></adaptive-icon>" > res/drawable/ic_launcher.xml
-          
-          # عمل zip وتغيير الامتداد لـ apk
-          zip -r app.apk AndroidManifest.xml classes.dex res META-INF
-          mv app.apk ../../app-debug.apk
+          # نسخ الملف النهائي
+          cp app.apk ../../app-debug.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
